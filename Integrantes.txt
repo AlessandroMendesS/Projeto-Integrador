@@ -1,0 +1,7 @@
+O projeto foi desenvolvido voltado para o DESKTOP ( Computador | WEB ).
+
+Os integrantes do Grupo 1 ( Sala A ) são:{
+    Alessandro Mendes de Souza | nº 2;
+    Henrique Gabriel Neves | nº 11;
+    João Paulo da Cunha Alves | nº14.
+}
