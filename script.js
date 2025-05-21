@@ -15,18 +15,18 @@ function calcularVertice(a, b, c) {
   return { xv, yv };
 }
 
-function gerarPontos(a, b, c) {
+function gerarPontos(a, b, c, min = -10, max = 10, step = 0.1) {
   let xValues = [];
   let yValues = [];
-  for (let x = -100; x <= 100; x += 0.5) {
+  
+  for (let x = min; x <= max; x += step) {
     xValues.push(x);
     let y = a * x * x + b * x + c;
     yValues.push(y);
   }
+  
   return { xValues, yValues };
 }
-
-let chart = null;
 
 function formatarNumero(num) {
   return parseFloat(num.toFixed(2));
@@ -51,203 +51,387 @@ function formatarFuncao(a, b, c) {
   return formula;
 }
 
-function criarGrafico(xValues, yValues, a, b, c, delta, raizes, vertice) {
-  const ctx = document.getElementById("grafico").getContext("2d");
+let myPlot = null;
 
-  if (chart !== null) {
-    chart.destroy();
+function criarGrafico(a, b, c, delta, raizes, vertice) {
+  const graphDiv = document.getElementById("grafico");
+  
+  // Ajusta o intervalo do gráfico com base nos pontos importantes
+  let xMin, xMax, pontos;
+  
+  if (delta >= 0 && typeof raizes !== 'string') {
+    // Se tiver raízes, incluir elas no gráfico
+    xMin = Math.min(raizes.x1, raizes.x2, vertice.xv) - 5;
+    xMax = Math.max(raizes.x1, raizes.x2, vertice.xv) + 5;
+  } else {
+    // Se não tiver raízes, focar no vértice
+    xMin = vertice.xv - 5;
+    xMax = vertice.xv + 5;
   }
-
+  
+  // Garante um intervalo mínimo para visualização
+  if (xMax - xMin < 10) {
+    const centro = (xMin + xMax) / 2;
+    xMin = centro - 5;
+    xMax = centro + 5;
+  }
+  
+  // Gera os pontos no intervalo calculado
+  pontos = gerarPontos(a, b, c, xMin, xMax);
+  
+  // Calcula limites de Y para melhor visualização
+  let yValues = pontos.yValues;
   let yMin = Math.min(...yValues);
   let yMax = Math.max(...yValues);
-
   let yRange = yMax - yMin;
+  
+  // Adiciona margem aos limites de Y
   yMin = yMin - yRange * 0.1;
   yMax = yMax + yRange * 0.1;
-
+  
+  // Limita Y para não ficar muito grande
+  if (yMin < -50) yMin = -50;
+  if (yMax > 50) yMax = 50;
+  
+  // Cria a linha da parábola
   const parabola = {
-    label: "Parábola",
-    data: yValues,
-    borderColor: "rgba(9, 132, 227, 0.8)",
-    backgroundColor: "rgba(9, 132, 227, 0.1)",
-    fill: false,
-    tension: 0.4,
-    pointRadius: 0,
-    borderWidth: 3
-  };
-
-  const options = {
-    responsive: true,
-    animation: {
-      duration: 2000,
-      easing: 'easeInOutQuart'
+    x: pontos.xValues,
+    y: pontos.yValues,
+    type: 'scatter',
+    mode: 'lines',
+    name: 'f(x) = ' + formatarFuncao(a, b, c),
+    line: {
+      color: 'rgba(9, 132, 227, 1)',
+      width: 3
     },
-    scales: {
-      x: {
-        title: {
-          display: true,
-          text: 'X',
-          font: {
-            size: 14,
-            weight: 'bold'
-          }
-        },
-        min: -20,
-        max: 20,
-        ticks: {
-          stepSize: 1,
-          font: {
-            size: 12
-          }
-        },
-        grid: {
-          color: 'rgba(150, 150, 150, 0.1)',
-          zeroLineColor: 'rgba(150, 150, 150, 0.5)',
-          drawTicks: true
-        }
-      },
-      y: {
-        title: {
-          display: true,
-          text: 'Y',
-          font: {
-            size: 14,
-            weight: 'bold'
-          }
-        },
-        min: Math.max(yMin, -50),
-        max: Math.min(yMax, 50),
-        ticks: {
-          stepSize: 5,
-          font: {
-            size: 12
-          }
-        },
-        grid: {
-          color: 'rgba(150, 150, 150, 0.1)',
-          zeroLineColor: 'rgba(150, 150, 150, 0.5)',
-          drawTicks: true
-        }
-      }
-    },
-    plugins: {
-      tooltip: {
-        backgroundColor: 'rgba(9, 132, 227, 0.9)',
-        titleFont: {
-          size: 14,
-          weight: 'bold'
-        },
-        bodyFont: {
-          size: 13
-        },
-        padding: 12,
-        cornerRadius: 8,
-        callbacks: {
-          label: function (context) {
-            const x = context.label;
-            const y = context.raw;
-            return `(${x}, ${y.toFixed(2)})`;
-          }
-        }
-      },
-      legend: {
-        labels: {
-          font: {
-            size: 13,
-            weight: 'bold'
-          },
-          padding: 20
-        }
-      }
-    }
+    hoverinfo: 'text',
+    hovertext: pontos.xValues.map((x, i) => 
+      `x: ${x.toFixed(2)}<br>y: ${pontos.yValues[i].toFixed(2)}`
+    )
   };
-
-  const datasets = [parabola];
-
-  if (delta >= 0) {
-    let x1, x2;
-
-    if (typeof raizes === 'string') {
-      // Não há raízes reais
+  
+  const traces = [parabola];
+  
+  // Adiciona marcadores para as raízes
+  if (delta >= 0 && typeof raizes !== 'string') {
+    const isRaizDupla = Math.abs(raizes.x1 - raizes.x2) < 0.001;
+    
+    if (isRaizDupla) {
+      traces.push({
+        x: [raizes.x1],
+        y: [0],
+        mode: 'markers',
+        name: `Raiz dupla: x = ${formatarNumero(raizes.x1).toFixed(2)}`,
+        marker: {
+          color: '#00b894',
+          size: 10,
+          symbol: 'star',
+          line: {
+            color: '#00b894',
+            width: 2
+          }
+        },
+        hoverinfo: 'text',
+        hovertext: `Raiz dupla: x = ${formatarNumero(raizes.x1).toFixed(2)}`
+      });
     } else {
-      x1 = raizes.x1;
-      x2 = raizes.x2;
-
-      const isRaizDupla = Math.abs(x1 - x2) < 0.001;
-
-      if (isRaizDupla) {
-        const raizIndex = xValues.findIndex(x => Math.abs(x - x1) < 0.5);
-        if (raizIndex >= 0) {
-          const raizesDataset = {
-            label: `Raiz dupla: x = ${x1.toFixed(2)}`,
-            data: Array(yValues.length).fill(null),
-            pointBackgroundColor: '#00b894',
-            pointBorderColor: '#00b894',
-            pointRadius: 6,
-            pointHoverRadius: 10,
-            pointStyle: 'star'
-          };
-          raizesDataset.data[raizIndex] = 0;
-          datasets.push(raizesDataset);
-        }
-      } else {
-        const raiz1Index = xValues.findIndex(x => Math.abs(x - x1) < 0.5);
-        const raiz2Index = xValues.findIndex(x => Math.abs(x - x2) < 0.5);
-
-        if (raiz1Index >= 0) {
-          const raiz1Dataset = {
-            label: `x₁ = ${x1.toFixed(2)}`,
-            data: Array(yValues.length).fill(null),
-            pointBackgroundColor: '#00b894',
-            pointBorderColor: '#00b894',
-            pointRadius: 6,
-            pointHoverRadius: 10,
-            pointStyle: 'circle'
-          };
-          raiz1Dataset.data[raiz1Index] = 0;
-          datasets.push(raiz1Dataset);
-        }
-
-        if (raiz2Index >= 0) {
-          const raiz2Dataset = {
-            label: `x₂ = ${x2.toFixed(2)}`,
-            data: Array(yValues.length).fill(null),
-            pointBackgroundColor: '#00b894',
-            pointBorderColor: '#00b894',
-            pointRadius: 6,
-            pointHoverRadius: 10,
-            pointStyle: 'circle'
-          };
-          raiz2Dataset.data[raiz2Index] = 0;
-          datasets.push(raiz2Dataset);
-        }
-      }
+      // Raiz x1
+      traces.push({
+        x: [raizes.x1],
+        y: [0],
+        mode: 'markers',
+        name: `x₁ = ${formatarNumero(raizes.x1).toFixed(2)}`,
+        marker: {
+          color: '#00b894',
+          size: 10,
+          symbol: 'circle',
+          line: {
+            color: '#00b894',
+            width: 2
+          }
+        },
+        hoverinfo: 'text',
+        hovertext: `x₁ = ${formatarNumero(raizes.x1).toFixed(2)}`
+      });
+      
+      // Raiz x2
+      traces.push({
+        x: [raizes.x2],
+        y: [0],
+        mode: 'markers',
+        name: `x₂ = ${formatarNumero(raizes.x2).toFixed(2)}`,
+        marker: {
+          color: '#00b894',
+          size: 10,
+          symbol: 'circle',
+          line: {
+            color: '#00b894',
+            width: 2
+          }
+        },
+        hoverinfo: 'text',
+        hovertext: `x₂ = ${formatarNumero(raizes.x2).toFixed(2)}`
+      });
     }
   }
-
-  const verticeIndex = xValues.findIndex(x => Math.abs(x - vertice.xv) < 0.5);
-  if (verticeIndex >= 0) {
-    const verticeDataset = {
-      label: `Vértice: (${vertice.xv.toFixed(2)}, ${vertice.yv.toFixed(2)})`,
-      data: Array(yValues.length).fill(null),
-      pointBackgroundColor: '#fdcb6e',
-      pointBorderColor: '#fdcb6e',
-      pointRadius: 6,
-      pointHoverRadius: 10,
-      pointStyle: 'triangle'
-    };
-    verticeDataset.data[verticeIndex] = yValues[verticeIndex];
-    datasets.push(verticeDataset);
-  }
-
-  chart = new Chart(ctx, {
-    type: "line",
-    data: {
-      labels: xValues,
-      datasets: datasets
+  
+  // Adiciona marcador para o vértice
+  traces.push({
+    x: [vertice.xv],
+    y: [vertice.yv],
+    mode: 'markers',
+    name: `Vértice (${formatarNumero(vertice.xv).toFixed(2)}, ${formatarNumero(vertice.yv).toFixed(2)})`,
+    marker: {
+      color: '#fdcb6e',
+      size: 10,
+      symbol: 'triangle-up',
+      line: {
+        color: '#fdcb6e',
+        width: 2
+      }
     },
-    options: options
+    hoverinfo: 'text',
+    hovertext: `Vértice (${formatarNumero(vertice.xv).toFixed(2)}, ${formatarNumero(vertice.yv).toFixed(2)})`
   });
+  
+  // Adiciona linha do eixo X
+  traces.push({
+    x: [xMin, xMax],
+    y: [0, 0],
+    mode: 'lines',
+    name: 'Eixo X',
+    line: {
+      color: 'rgba(150, 150, 150, 0.5)',
+      width: 1,
+      dash: 'dash'
+    },
+    showlegend: false,
+    hoverinfo: 'none'
+  });
+  
+  // Adiciona linha do eixo Y
+  traces.push({
+    x: [0, 0],
+    y: [yMin, yMax],
+    mode: 'lines',
+    name: 'Eixo Y',
+    line: {
+      color: 'rgba(150, 150, 150, 0.5)',
+      width: 1,
+      dash: 'dash'
+    },
+    showlegend: false,
+    hoverinfo: 'none'
+  });
+  
+  // Configuração do layout
+  const layout = {
+    title: {
+      text: 'Gráfico da Função Quadrática',
+      font: {
+        family: 'Inter, sans-serif',
+        size: 18
+      }
+    },
+    hoverlabel: {
+      bgcolor: '#FFF',
+      font: {
+        family: 'Inter, sans-serif',
+        size: 12,
+        color: '#333'
+      },
+      bordercolor: '#0984e3'
+    },
+    xaxis: {
+      title: {
+        text: 'x',
+        font: {
+          family: 'Inter, sans-serif',
+          size: 14,
+          color: 'var(--text-primary)'
+        }
+      },
+      range: [xMin, xMax],
+      showgrid: true,
+      zeroline: true,
+      gridcolor: 'rgba(150, 150, 150, 0.1)',
+      zerolinecolor: 'rgba(150, 150, 150, 0.5)',
+      zerolinewidth: 1.5
+    },
+    yaxis: {
+      title: {
+        text: 'y',
+        font: {
+          family: 'Inter, sans-serif',
+          size: 14,
+          color: 'var(--text-primary)'
+        }
+      },
+      range: [yMin, yMax],
+      showgrid: true,
+      zeroline: true,
+      gridcolor: 'rgba(150, 150, 150, 0.1)',
+      zerolinecolor: 'rgba(150, 150, 150, 0.5)',
+      zerolinewidth: 1.5
+    },
+    legend: {
+      orientation: 'h',
+      yanchor: 'bottom',
+      y: -0.15,
+      xanchor: 'center',
+      x: 0.5,
+      font: {
+        family: 'Inter, sans-serif',
+        size: 12
+      }
+    },
+    margin: {
+      l: 50,
+      r: 50,
+      t: 50,
+      b: 50
+    },
+    paper_bgcolor: 'rgba(0,0,0,0)',
+    plot_bgcolor: 'rgba(0,0,0,0)',
+    showlegend: true,
+    hovermode: 'closest',
+    annotations: []
+  };
+  
+  // Adiciona annotations para as raízes e vértice
+  if (delta >= 0 && typeof raizes !== 'string') {
+    const isRaizDupla = Math.abs(raizes.x1 - raizes.x2) < 0.001;
+    
+    if (isRaizDupla) {
+      layout.annotations.push({
+        x: raizes.x1,
+        y: 0,
+        text: `x = ${formatarNumero(raizes.x1).toFixed(2)}`,
+        showarrow: true,
+        arrowhead: 2,
+        arrowsize: 1,
+        arrowwidth: 1.5,
+        arrowcolor: '#00b894',
+        ax: 0,
+        ay: -30,
+        bgcolor: 'rgba(255, 255, 255, 0.8)',
+        bordercolor: '#00b894',
+        borderwidth: 1,
+        borderpad: 4,
+        font: {
+          family: 'Inter, sans-serif',
+          size: 12,
+          color: '#00b894'
+        }
+      });
+    } else {
+      layout.annotations.push({
+        x: raizes.x1,
+        y: 0,
+        text: `x₁ = ${formatarNumero(raizes.x1).toFixed(2)}`,
+        showarrow: true,
+        arrowhead: 2,
+        arrowsize: 1,
+        arrowwidth: 1.5,
+        arrowcolor: '#00b894',
+        ax: 0,
+        ay: -30,
+        bgcolor: 'rgba(255, 255, 255, 0.8)',
+        bordercolor: '#00b894',
+        borderwidth: 1,
+        borderpad: 4,
+        font: {
+          family: 'Inter, sans-serif',
+          size: 12,
+          color: '#00b894'
+        }
+      });
+      
+      layout.annotations.push({
+        x: raizes.x2,
+        y: 0,
+        text: `x₂ = ${formatarNumero(raizes.x2).toFixed(2)}`,
+        showarrow: true,
+        arrowhead: 2,
+        arrowsize: 1,
+        arrowwidth: 1.5,
+        arrowcolor: '#00b894',
+        ax: 0,
+        ay: -30,
+        bgcolor: 'rgba(255, 255, 255, 0.8)',
+        bordercolor: '#00b894',
+        borderwidth: 1,
+        borderpad: 4,
+        font: {
+          family: 'Inter, sans-serif',
+          size: 12,
+          color: '#00b894'
+        }
+      });
+    }
+  }
+  
+  // Vértice annotation
+  layout.annotations.push({
+    x: vertice.xv,
+    y: vertice.yv,
+    text: `(${formatarNumero(vertice.xv).toFixed(2)}, ${formatarNumero(vertice.yv).toFixed(2)})`,
+    showarrow: true,
+    arrowhead: 2,
+    arrowsize: 1,
+    arrowwidth: 1.5,
+    arrowcolor: '#fdcb6e',
+    ax: 0,
+    ay: -40,
+    bgcolor: 'rgba(255, 255, 255, 0.8)',
+    bordercolor: '#fdcb6e',
+    borderwidth: 1,
+    borderpad: 4,
+    font: {
+      family: 'Inter, sans-serif',
+      size: 12,
+      color: '#fdcb6e'
+    }
+  });
+  
+  // Configurações para interatividade
+  const config = {
+    responsive: true,
+    displayModeBar: true,
+    modeBarButtonsToRemove: ['toImage', 'sendDataToCloud'],
+    displaylogo: false
+  };
+  
+  // Se já existe um gráfico, atualize-o
+  if (myPlot) {
+    Plotly.react(graphDiv, traces, layout, config);
+  } else {
+    // Caso contrário, crie um novo
+    Plotly.newPlot(graphDiv, traces, layout, config);
+    myPlot = graphDiv;
+  }
+  
+  // Ajuste para tema escuro se aplicável
+  ajustarTemaCores();
+}
+
+// Função para ajustar cores baseado no tema
+function ajustarTemaCores() {
+  // Verifica se o tema atual é escuro
+  const isDarkMode = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  
+  if (!myPlot) return;
+  
+  const updateColors = {
+    'xaxis.color': isDarkMode ? '#dfe6e9' : '#2d3436',
+    'yaxis.color': isDarkMode ? '#dfe6e9' : '#2d3436',
+    'xaxis.gridcolor': isDarkMode ? 'rgba(150, 150, 150, 0.2)' : 'rgba(150, 150, 150, 0.1)',
+    'yaxis.gridcolor': isDarkMode ? 'rgba(150, 150, 150, 0.2)' : 'rgba(150, 150, 150, 0.1)',
+    'font.color': isDarkMode ? '#dfe6e9' : '#2d3436',
+    'title.font.color': isDarkMode ? '#f5f6fa' : '#2d3436'
+  };
+  
+  Plotly.relayout(myPlot, updateColors);
 }
 
 function calcularFuncao() {
@@ -264,12 +448,14 @@ function calcularFuncao() {
   document.querySelectorAll('.card-resultado').forEach(card => {
     card.style.opacity = '0.5';
   });
+  
+  // Adicionar classe de loading para indicar processamento
+  document.getElementById('grafico').classList.add('loading');
 
   setTimeout(() => {
     let delta = calcularDelta(a, b, c);
     let raizes = calcularRaizes(a, b, delta);
     let vertice = calcularVertice(a, b, c);
-    let pontos = gerarPontos(a, b, c);
 
     document.getElementById("delta").innerText = `Δ = ${delta.toFixed(2)}`;
 
@@ -290,14 +476,17 @@ function calcularFuncao() {
       `(${formatarNumero(vertice.xv).toFixed(2)}, ${formatarNumero(vertice.yv).toFixed(2)})`;
 
     document.getElementById("funcao-display").innerHTML =
-      `f(x) = ${formatarFuncao(a, b, c)}`;
+      `<i class="fas fa-function"></i> f(x) = ${formatarFuncao(a, b, c)}`;
 
-    criarGrafico(pontos.xValues, pontos.yValues, a, b, c, delta, raizes, vertice);
+    criarGrafico(a, b, c, delta, raizes, vertice);
 
     // Restaurar opacidade dos cards
     document.querySelectorAll('.card-resultado').forEach(card => {
       card.style.opacity = '1';
     });
+    
+    // Remover classe de loading
+    document.getElementById('grafico').classList.remove('loading');
   }, 300);
 }
 
@@ -350,10 +539,10 @@ function atualizarListaFavoritos() {
     <div class="favorito-item">
       <span class="favorito-formula">f(x) = ${fav.formula}</span>
       <div class="favorito-botoes">
-        <button onclick="carregarFavorito(${fav.a}, ${fav.b}, ${fav.c})" class="btn-carregar">
+        <button onclick="carregarFavorito(${fav.a}, ${fav.b}, ${fav.c})" class="btn-carregar" title="Carregar função">
           <i class="fas fa-play"></i>
         </button>
-        <button onclick="removerFavorito(${index})" class="btn-remover">
+        <button onclick="removerFavorito(${index})" class="btn-remover" title="Remover dos favoritos">
           <i class="fas fa-trash"></i>
         </button>
       </div>
@@ -380,6 +569,20 @@ function mostrarNotificacao(mensagem) {
     }, 2000);
   }, 100);
 }
+
+// Escutar mudanças no tema do sistema
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+  if (myPlot) {
+    ajustarTemaCores();
+  }
+});
+
+// Adicionar evento de resize para o gráfico
+window.addEventListener('resize', () => {
+  if (myPlot) {
+    Plotly.Plots.resize(myPlot);
+  }
+});
 
 // Inicializar a página com valores padrão
 window.onload = function () {
